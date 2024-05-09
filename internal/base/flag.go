@@ -5,10 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
-	"path"
-	"path/filepath"
-	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -27,18 +23,25 @@ var (
 
 // config file flags
 var (
-	Debug               bool // 是否开启 debug 模式
-	RemoveReplyAt       bool // 是否删除reply后的at
-	ExtraReplyData      bool // 是否上报额外reply信息
-	IgnoreInvalidCQCode bool // 是否忽略无效CQ码
-	SplitURL            bool // 是否分割URL
-	ForceFragmented     bool // 是否启用强制分片
-	SkipMimeScan        bool // 是否跳过Mime扫描
-	ReportSelfMessage   bool // 是否上报自身消息
-	UseSSOAddress       bool // 是否使用服务器下发的新地址进行重连
-	LogForceNew         bool // 是否在每次启动时强制创建全新的文件储存日志
-	LogColorful         bool // 是否启用日志颜色
-	FastStart           bool // 是否为快速启动
+	Debug               bool                // 是否开启 debug 模式
+	RemoveReplyAt       bool                // 是否删除reply后的at
+	ExtraReplyData      bool                // 是否上报额外reply信息
+	IgnoreInvalidCQCode bool                // 是否忽略无效CQ码
+	SplitURL            bool                // 是否分割URL
+	ForceFragmented     bool                // 是否启用强制分片
+	SkipMimeScan        bool                // 是否跳过Mime扫描
+	ConvertWebpImage    bool                // 是否转换Webp图片
+	ReportSelfMessage   bool                // 是否上报自身消息
+	UseSSOAddress       bool                // 是否使用服务器下发的新地址进行重连
+	LogForceNew         bool                // 是否在每次启动时强制创建全新的文件储存日志
+	LogColorful         bool                // 是否启用日志颜色
+	FastStart           bool                // 是否为快速启动
+	AllowTempSession    bool                // 是否允许发送临时会话信息
+	UpdateProtocol      bool                // 是否更新协议
+	SignServers         []config.SignServer // 使用特定的服务器进行签名
+	IsBelow110          bool                // 签名服务器版本是否低于1.1.0及以下
+	HTTPTimeout         int                 // download 超时时间
+	SignServerTimeout   int                 // 签名服务器超时时间
 
 	PostFormat        string                 // 上报格式 string or array
 	Proxy             string                 // 存储 proxy_rewrite,用于设置代理
@@ -56,13 +59,13 @@ var (
 
 // Parse parse flags
 func Parse() {
-	wd, _ := os.Getwd()
-	dc := path.Join(wd, "config.yml")
-	flag.StringVar(&LittleC, "c", dc, "configuration filename")
+	flag.StringVar(&LittleC, "c", "config.yml", "configuration filename")
 	flag.BoolVar(&LittleD, "d", false, "running as a daemon")
 	flag.BoolVar(&LittleH, "h", false, "this Help")
 	flag.StringVar(&LittleWD, "w", "", "cover the working directory")
 	d := flag.Bool("D", false, "debug mode")
+	flag.BoolVar(&FastStart, "faststart", false, "skip waiting 5 seconds")
+	flag.BoolVar(&UpdateProtocol, "update-protocol", false, "update protocol")
 	flag.Parse()
 
 	if *d {
@@ -83,8 +86,14 @@ func Init() {
 		ExtraReplyData = conf.Message.ExtraReplyData
 		ForceFragmented = conf.Message.ForceFragment
 		SkipMimeScan = conf.Message.SkipMimeScan
+		ConvertWebpImage = conf.Message.ConvertWebpImage
 		ReportSelfMessage = conf.Message.ReportSelfMessage
 		UseSSOAddress = conf.Account.UseSSOAddress
+		AllowTempSession = conf.Account.AllowTempSession
+		SignServers = conf.Account.SignServers
+		IsBelow110 = conf.Account.IsBelow110
+		HTTPTimeout = conf.Message.HTTPTimeout
+		SignServerTimeout = int(conf.Account.SignServerTimeout)
 	}
 	{ // others
 		Proxy = conf.Message.ProxyRewrite
@@ -122,29 +131,5 @@ Options:
 `, Version)
 
 	flag.PrintDefaults()
-	os.Exit(0)
-}
-
-// ResetWorkingDir 重设工作路径
-func ResetWorkingDir() {
-	wd := LittleWD
-	args := make([]string, 0, len(os.Args))
-	for i := 1; i < len(os.Args); i++ {
-		if os.Args[i] == "-w" {
-			i++ // skip value field
-		} else if !strings.HasPrefix(os.Args[i], "-w") {
-			args = append(args, os.Args[i])
-		}
-	}
-	p, _ := filepath.Abs(os.Args[0])
-	proc := exec.Command(p, args...)
-	proc.Stdin = os.Stdin
-	proc.Stdout = os.Stdout
-	proc.Stderr = os.Stderr
-	proc.Dir = wd
-	err := proc.Run()
-	if err != nil {
-		panic(err)
-	}
 	os.Exit(0)
 }
